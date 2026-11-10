@@ -1,236 +1,87 @@
-# HTTP Bench
+# http-bench
 
-一个单机版 HTTP 压测工具，支持高并发请求、QPS 限速、实时指标聚合与分位数计算，提供 Web UI 实时查看 QPS/延迟/状态码/错误分布图表。
+http-bench 是供开发者在自有设备上压测自有 HTTP 服务的本地工具。新版 MVP 提供 MyGo 桌面端和 TUI，两者共用独立运行的本地 Go 后台。
 
-## 功能特性
+项目支持 Linux、macOS 和 Windows。客户端退出后，后台继续完成压测。重新打开任一客户端可以查看原运行的进度或结果。
 
-- **高并发压测**：可配置并发数、QPS、持续时间，支持 QPS 限速与不限速两种模式
-- **多种请求体**：`none` / `raw`(JSON) / `x-www-form-urlencoded` / `form-data`(multipart 文件上传)
-- **实时指标**：SSE 每秒推送聚合快照，前端实时绘制 4 张图表
-- **分位数计算**：任务级固定线性直方图，O(1) 插入，计算 P50/P90/P95/P99
-- **细粒度错误分类**：timeout / dns / connection_refused / connection_reset / too_many_open_files / network 等 14 类
-- **连接池可控**：`max_conns_per_host` 独立配置，防 FD 耗尽
-- **任务管理**：创建/启动/停止/查询/列表，SQLite 持久化，历史可回看
-- **单容器部署**：前端 embed 进后端二进制，`docker run` 即用
+新版正在从零开发，不迁移旧数据，也不兼容旧接口。需求与验收约定以本文为依据，实现进度统一记录在 [新版 http-bench MVP 总 Issue](https://github.com/awu123-create/http-bench/issues/11)。
 
-## 快速开始（Docker）
+## MVP 功能
 
-```bash
-docker run -d -p 8080:8080 -v hb-data:/data --name http-bench ghcr.io/awu123-create/http-bench:latest
-```
+- 配置单个 HTTP 接口，设置并发数、QPS 上限、必填的最大压测时长和可选的请求数量上限。
+- 保存、修改和复用测试定义。每次启动创建独立的测试运行。
+- 同一时间只允许一场压测执行请求。
+- 启动和手动停止压测，实时查看指标，并查询历史结果。
+- 关闭客户端后继续执行。重新打开 TUI 或 MyGo 后可找回运行。
+- 报告展示实际吞吐量、延迟、HTTP 成功率、状态码和错误分布。
 
-浏览器打开 `http://localhost:8080`，创建压测任务、启动、查看实时图表。
+## 行为与验收约定
 
-数据持久化在 `hb-data` 卷中，容器删除后历史任务仍保留。
-
-### docker compose
-
-```yaml
-services:
-  http-bench:
-    image: ghcr.io/awu123-create/http-bench:latest
-    ports:
-      - "8080:8080"
-    volumes:
-      - http-bench-data:/data
-    restart: unless-stopped
-volumes:
-  http-bench-data:
-```
-
-## 本地开发
-
-### 环境要求
-
-- Go 1.25+
-- Node.js 20+
-- npm
-
-### 启动后端
-
-```bash
-cd backend
-go run ./cmd/server
-```
-后端监听 `:8080`，自动运行数据库迁移。
-
-### 启动前端
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-前端开发服务器监听 `:5173`，自动代理 `/api` 到后端。
-
-浏览器打开 `http://localhost:5173` 开发调试。
-
-## 配置说明
-
-创建压测任务时的配置字段：
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `name` | string | 任务名称，留空自动生成 |
-| `request.method` | string | HTTP 方法 |
-| `request.url` | string | 目标 URL |
-| `request.headers` | object | 自定义请求头 |
-| `request.body_type` | string | 请求体类型：`none`/`raw`/`x-www-form-urlencoded`/`form-data` |
-| `request.body_raw` | string | 请求体内容；`form-data` 时填 JSON 配方 |
-| `concurrency` | int | 并发 worker 数（上限 10000） |
-| `qps` | int | 全局 QPS 限制，0 表示不限速（上限 100000） |
-| `duration` | int | 持续时间，秒（上限 3600） |
-| `timeout_millis` | int | 单请求超时，毫秒（上限 60000） |
-| `max_conns_per_host` | int | 单主机最大连接数，0 表示用 concurrency（上限 10000） |
-
-### form-data 请求体格式
-
-`body_type` 为 `form-data` 时，`body_raw` 填如下 JSON：
-
-```json
-{
-  "fields": {"username": "alice"},
-  "files": [
-    {"name": "upload", "filename": "a.txt", "content": "文本内容"},
-    {"name": "img", "filename": "b.bin", "content_base64": "AAECAw=="}
-  ]
-}
-```
-
-## API 接口
-
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| POST | `/api/tests` | 创建压测任务 |
-| GET | `/api/tests` | 列出所有任务 |
-| GET | `/api/tests/:id` | 查询单个任务 |
-| POST | `/api/tests/:id/start` | 启动任务 |
-| POST | `/api/tests/:id/stop` | 停止任务 |
-| GET | `/api/tests/:id/metrics` | 查询每秒指标历史 |
-| GET | `/api/tests/:id/events` | SSE 实时指标推送 |
-| GET | `/api/tests/:id/result` | 查询最终结果（含分位数） |
-
-所有响应统一格式：
-
-```json
-{"message": "ok", "data": { ... }}
-```
+1. Linux、macOS 和 Windows 的桌面端与 TUI 都能完成配置、启动、停止及结果查询。两个客户端看到同一后台的运行状态和数据。
+2. 同时在途请求不超过并发上限。QPS 是请求启动速率上限。接口变慢时实际速率可以下降，报告必须如实展示。
+3. 最大时长或请求数量先达到上限时，停止启动新请求。请求数量按已启动的请求尝试计数，成功和失败都计入。
+4. 手动停止后同样停止启动新请求。在途请求等待完成或达到单请求超时。请求全部结束并收齐测量数据后释放执行名额。指标汇总不阻塞下一场启动。
+5. 无传输错误且状态码为 `200` 到 `399` 时计为 HTTP 成功。MVP 不校验业务响应内容。
+6. 每次运行保留独立的配置快照和结果。后续修改测试定义不影响历史记录。
+7. 正常响应、异常状态码、超时、并发上限、启动速率、停止条件、客户端退出重连和历史隔离都需要可重复运行的验证。
 
 ## 架构
 
+后台采用 DDD、分层架构与端口适配器，保持模块化单体。系统围绕测试定义、测试运行和运行报告组织模块，分开管理调度、请求执行、指标汇总和存储。
+
+领域层不依赖 MyGo、GORM 或 HTTP。桌面端和 TUI 通过同一套 Go 客户端封装访问后台。
+
 ```text
-┌─────────────────────────────────────────────────┐
-│                    浏览器                        │
-│  Vue 3 + ECharts + Ant Design Vue               │
-│  任务列表 / 创建表单 / 实时图表 / 最终报告        │
-└────────────────────┬────────────────────────────┘
-            REST API  │  SSE
-┌────────────────────▼────────────────────────────┐
-│                  后端 (Go)                       │
-│  ┌─────────┐  ┌─────────┐  ┌────────────────┐   │
-│  │  api    │  │  task   │  │   engine       │   │
-│  │ router  │→ │ manager │→ │ worker goroutine│  │
-│  └─────────┘  └────┬────┘  └───────┬────────┘   │
-│                    │               │             │
-│              ┌─────▼─────┐  ┌──────▼──────┐      │
-│              │  storage  │  │  metrics    │      │
-│              │  (sqlc)   │  │ collector + │      │
-│              │  SQLite   │  │ histogram   │      │
-│              └───────────┘  └─────────────┘      │
-└─────────────────────────────────────────────────┘
+TUI ───────────────┐
+                   ├─ 共享 Go 客户端 ─ HTTP + JSON / SSE ─ 本地 Go 后台
+MyGo 桌面端 ───────┘                                      ├─ 测试定义
+                                                          ├─ 测试运行与调度
+                                                          ├─ 请求执行
+                                                          ├─ 指标汇总
+                                                          └─ SQLite 存储
 ```
 
-**数据流**：worker 发请求 → collector 每秒聚合 → 写 SQLite + SSE 推前端 → 任务结束算分位数写最终结果。
+本地 IPC 在 Linux 和 macOS 使用 Unix Domain Socket，在 Windows 使用 Named Pipe。IPC 承载同一套 HTTP 通信。
 
 ## 技术栈
 
-**后端**
-- Go 1.25 + Gin（Web 框架）
-- SQLite + sqlc（类型安全 SQL 代码生成）+ goose（迁移）
-- modernc.org/sqlite（纯 Go SQLite，无 CGO 依赖）
+| 范围 | 技术 |
+| --- | --- |
+| 后台 | Go |
+| 桌面端 | MyGo |
+| TUI | Bubble Tea v2、Bubbles v2、Lip Gloss v2 |
+| 客户端通信 | HTTP + JSON，SSE 推送状态与指标 |
+| 本地 IPC | Unix Domain Socket、Windows Named Pipe、go-winio |
+| 控制接口与请求执行 | 标准库 `net/http` |
+| 启动速率限制 | `golang.org/x/time/rate` |
+| 延迟分布 | HDRHistogram-Go |
+| 数据存储 | SQLite、GORM 官方 SQLite 驱动，允许 CGO |
+| 数据库迁移 | Goose |
+| 日志 | zap |
+| 可观测性 | OpenTelemetry，按需导出遥测数据 |
+| 测试 | Go testing、httptest、race detector |
 
-**前端**
-- Vue 3 + TypeScript + Vite
-- Pinia（状态管理）+ Vue Router
-- Ant Design Vue（UI 组件）
-- ECharts + vue-echarts（图表）
-- 原生 EventSource（SSE 消费）
+Goose 统一管理表结构，不使用 GORM AutoMigrate。数据库保存聚合结果，避免逐请求写库。日志和 OpenTelemetry 默认不逐条记录发压请求，避免影响压测结果。
 
-**部署**
-- Docker 多阶段构建，前端 embed 进后端二进制
-- 单容器单端口，支持 amd64/arm64 双架构
+## 运行与交付
 
-## 项目结构
+- 客户端与后台一起打包。
+- 客户端按需启动当前用户的后台，多个客户端复用同一个后台。
+- 客户端退出后，后台继续完成压测。
+- 重新打开客户端可以连接后台并查看运行。
 
-```text
-.
-├── backend/
-│   ├── cmd/server/          # 入口
-│   ├── internal/
-│   │   ├── api/             # 路由、handler、响应封装
-│   │   ├── config/          # 配置结构与校验
-│   │   ├── engine/          # 压测引擎、请求构造、错误分类
-│   │   ├── metrics/         # 指标聚合、直方图、分位数
-│   │   ├── storage/         # SQLite 访问 + sqlc 生成代码
-│   │   ├── static/          # embed 前端产物
-│   │   └── task/            # 任务生命周期管理、SSE、结果聚合
-│   ├── migrations/          # 数据库迁移
-│   └── README.md            # 后端开发文档
-├── frontend/
-│   ├── src/
-│   │   ├── api/             # HTTP 调用封装
-│   │   ├── components/      # 表单、图表组件
-│   │   ├── composables/     # SSE 封装
-│   │   ├── router/          # 路由
-│   │   ├── stores/          # Pinia 状态
-│   │   ├── types/           # TypeScript 类型
-│   │   └── views/           # 任务列表、任务详情页
-│   └── package.json
-├── Dockerfile               # 多阶段构建
-├── docker-compose.yml
-└── .dockerignore
-```
+## 非目标
 
-## 测试
+以下能力留到后续版本，不纳入本次 MVP：
 
-```bash
-cd backend
-go test ./... -count=2
-```
+- 多场压测并行。
+- 有先后依赖的请求流程。
+- 用户配置的业务响应校验规则。
 
-覆盖：配置校验、引擎执行、QPS 限制、分位数计算、错误分类、任务管理、API 端点、存储迁移。
+## 开发协作
 
-## 构建镜像
+后台实现使用 `refactor/core` 作为集成分支。每个切片从最新集成分支创建独立分支和 worktree。后台 PR 审核通过并取得用户确认后合入 `refactor/core`。
 
-本地构建：
+每个实现 PR 必须关联对应 Issue。部分实现使用 `Refs #编号` 并说明剩余工作。完整实现且验证通过后使用 `Closes #编号`。一个 Issue 可以由多个 PR 完成。
 
-```bash
-docker build -t http-bench .
-```
-
-多架构构建并推送到 ghcr.io：
-
-```bash
-docker buildx create --name multiarch --use
-docker buildx build --platform linux/amd64,linux/arm64 \
-  -t ghcr.io/awu123-create/http-bench:latest \
-  --push .
-```
-
-## 任务状态
-
-| 状态 | 说明 |
-|---|---|
-| `Created` | 已创建，未启动 |
-| `Running` | 正在压测 |
-| `Stopped` | 用户主动停止 |
-| `Finished` | 正常完成（duration 到达） |
-| `Failed` | 执行失败 |
-
-## 环境变量
-
-| 变量 | 默认值 | 说明 |
-|---|---|---|
-| `HTTP_BENCH_ADDR` | `:8080` | 监听地址 |
-| `HTTP_BENCH_DB` | `data/http-bench.db` | SQLite 数据库路径 |
-| `HTTP_BENCH_MIGRATIONS` | `migrations` | 迁移文件目录 |
+各实现 Issue 记录关联 PR、实际验证命令和结果、剩余工作及下一步。只有全部 MVP 验收完成后才关闭总 Issue。
