@@ -2,6 +2,7 @@ package definition
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 )
 
@@ -62,7 +63,7 @@ func (d TestDefinition) Request() RequestSpec {
 	return RequestSpec{
 		method:  d.request.method,
 		rawURL:  d.request.rawURL,
-		headers: cloneHeaders(d.request.headers),
+		headers: maps.Clone(d.request.headers),
 	}
 }
 

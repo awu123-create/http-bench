@@ -44,7 +44,7 @@ func NewRequestSpec(method, rawURL string, headers map[string]string) (RequestSp
 	return RequestSpec{
 		method:  method,
 		rawURL:  rawURL,
-		headers: cloneHeaders(headers),
+		headers: maps.Clone(headers),
 	}, nil
 }
 
@@ -59,11 +59,7 @@ func (s RequestSpec) URL() string {
 
 // Headers returns an independent copy of the request headers.
 func (s RequestSpec) Headers() map[string]string {
-	return cloneHeaders(s.headers)
-}
-
-func cloneHeaders(headers map[string]string) map[string]string {
-	return maps.Clone(headers)
+	return maps.Clone(s.headers)
 }
 
 func isToken(value string) bool {
