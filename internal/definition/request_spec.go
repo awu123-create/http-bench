@@ -2,6 +2,7 @@ package definition
 
 import (
 	"fmt"
+	"maps"
 	"net/url"
 	"strings"
 )
@@ -24,7 +25,7 @@ func NewRequestSpec(method, rawURL string, headers map[string]string) (RequestSp
 	}
 	if !parsedURL.IsAbs() ||
 		(!strings.EqualFold(parsedURL.Scheme, "http") && !strings.EqualFold(parsedURL.Scheme, "https")) ||
-		parsedURL.Host == "" {
+		parsedURL.Hostname() == "" {
 		return RequestSpec{}, fmt.Errorf("request URL must be an absolute HTTP or HTTPS URL with a host")
 	}
 
@@ -32,8 +33,11 @@ func NewRequestSpec(method, rawURL string, headers map[string]string) (RequestSp
 		if !isToken(name) {
 			return RequestSpec{}, fmt.Errorf("header name %q must be a non-empty RFC token", name)
 		}
-		if strings.ContainsAny(value, "\r\n") {
-			return RequestSpec{}, fmt.Errorf("header %q value must not contain CR or LF", name)
+		for i := 0; i < len(value); i++ {
+			c := value[i]
+			if (c < 0x20 && c != '\t') || c == 0x7f {
+				return RequestSpec{}, fmt.Errorf("header %q value contains an invalid control character", name)
+			}
 		}
 	}
 
@@ -59,14 +63,7 @@ func (s RequestSpec) Headers() map[string]string {
 }
 
 func cloneHeaders(headers map[string]string) map[string]string {
-	if headers == nil {
-		return nil
-	}
-	cloned := make(map[string]string, len(headers))
-	for name, value := range headers {
-		cloned[name] = value
-	}
-	return cloned
+	return maps.Clone(headers)
 }
 
 func isToken(value string) bool {
