@@ -80,7 +80,7 @@ Goose 统一管理表结构，不使用 GORM AutoMigrate。数据库保存聚合
 
 ## 开发协作
 
-后台实现使用 `refactor/core` 作为集成分支。每个切片从最新集成分支创建独立分支和 worktree。后台 PR 审核通过并取得用户确认后合入 `refactor/core`。
+后台实现使用 `dev` 作为集成分支。每个切片从最新集成分支创建独立分支和 worktree。后台 PR 审核通过并取得用户确认后合入 `dev`。
 
 每个实现 PR 必须关联对应 Issue。部分实现使用 `Refs #编号` 并说明剩余工作。完整实现且验证通过后使用 `Closes #编号`。一个 Issue 可以由多个 PR 完成。
 
